@@ -1,0 +1,116 @@
+flowchart TB
+  subgraph D1["域簇 1：分钟舔狗 NewMinuteDog"]
+    direction TB
+    M1["mechanism: timer 生命周期<br/>maleId 维度 ZSET；不记来源 PWA<br/>（B 的消息重置 A 的任务）"]
+    M2["mechanism: 路由表<br/>普通/回声→Reset<br/>击穿→EnsureOnly"]
+    M3["mechanism: 选人<br/>pwa_recent 倒序<br/>空时回退 recent_chats"]
+    M4["mechanism: 已知边界<br/>无候选 PWA 时无限空转"]
+    I1["锚点: new_minute_dog:timers<br/>/ pwa_recent / sent:{male}"]
+    I2["锚点: NewMinuteDog{Service,Store,<br/>Executor,Router}.kt"]
+    I3["锚点: Nacos new_texas_minute_dog_config"]
+    I4["锚点: AB new_texas_minute_dog<br/>prod 24h 命中 1370 次"]
+    DE1["decision: 滚动 24h ZSET 窗口<br/>（按天 INCR 会午夜清零）"]
+    DE2["decision: 击穿只建不重置<br/>（08-10 起）"]
+    DE2old["decision: 击穿完全 Skip<br/><s>已失效</s>"]
+    DE3["decision: 男消息只顺延不新建<br/>不打 AB 查询"]
+    C1["case: PR #932<br/>冷静期顺延+窗口上限+可分发放宽"]
+    C2["case: PR #961<br/>选人改序+击穿 EnsureOnly"]
+  end
+
+  subgraph D2["域簇 2：videotips"]
+    direction TB
+    M5["mechanism: 周期随机触发<br/>N 轮/周期抽 3 点，间隔≥4"]
+    M6["mechanism: 命中轮被挡 = 永久丢失<br/>下周期重抽不补发"]
+    M7["mechanism: 在线判定 isPwaOnline<br/>心跳∪ + 状态∈{1,2}，fail-closed"]
+    I5["锚点: Nacos video_tips_config<br/>prod 已改 rounds_per_trigger=10"]
+    I6["锚点: Redis user:client:online:status:records<br/>值是枚举名字符串，非数字"]
+    I7["锚点: AB new_texas_video_tips<br/>aggressiveGate 已在 prod 生效"]
+    DE4["decision: PWA 判定移出可分发校验<br/>VideoCallHelper 路径未动"]
+    DE5["decision: 聊过前 0 轮<br/>（实验命中时去掉 3 轮安全垫）"]
+    C3["case: PR #950 在线判定改造"]
+    C4["case: PR #951 aggressive gate"]
+  end
+
+  subgraph D3["域簇 3：多选一实验 multi_candidate"]
+    direction TB
+    M8["mechanism: AgentLoop 两臂<br/>structured / parallel + 打分器"]
+    M9["mechanism: flat anchor commitHint<br/>按臂适配（structured 要求 ONCE+3候选）"]
+    I8["锚点: Nacos candidate_gen_config<br/>enabled 是紧急回退总开关"]
+    I9["锚点: AB multi_candidate_audit"]
+    C5["case: PR #962 删旧管线<br/>4 commit 含 CancellationException fix"]
+  end
+
+  subgraph SHARED["共享环境层（跨域唯一通道）"]
+    direction TB
+    E1["env: SLS 查询<br/>dev/prod 双 project<br/>tag __tag__:_service_name_:aichat-v2"]
+    E2["env: dev Redis 集群模式<br/>跨 key Lua 必 CROSSSLOT<br/>改用批量命令"]
+    E3["env: BytePlus 语义<br/>__no_experiment__=没进实验≠对照组<br/>10s 负缓存；白名单分钟级同步"]
+    E4["env: Nacos 热加载<br/>aichat_v2_feature_flags<br/>改配置日志才说明生效"]
+    E5["env: e2e 打流量<br/>doni-android app=11<br/>llm_raw 逐条核实"]
+  end
+
+  subgraph TROUBLE["排障资产层"]
+    direction TB
+    RB1["runbook: 实验没生效排查<br/>时间线→个案vs整体→版本→SENTINEL复现<br/>→恢复后需 PWA 消息或重新上下线"]
+    RB2["runbook: 舔狗未触发排查<br/>查 timer/state/在线/实验 四元组"]
+    RB3["runbook: 实验分组验证<br/>e2e 打流量→收 traceId→llm_raw 核对"]
+    P1["pitfall: 30 分钟抽样判实验死活<br/>→ 必须 24h SQL 聚合"]
+    P2["pitfall: Nacos HTTP API 需 AK，走不通"]
+    P3["pitfall: gradle run 写死 ApplicationKt<br/>→ 用一次性测试类"]
+    P4["pitfall: git cherry 标 + 只因 patch-id 变<br/>→ 对文件内容 diff 才作数"]
+  end
+
+  %% 域内：契约→实现
+  M1 -->|has_impl| I1
+  M1 -->|has_impl| I2
+  M2 -->|has_impl| I2
+  M3 -->|has_impl| I1
+  M1 -.->|has_impl 配置| I3
+  M2 -.->|has_impl 开关| I4
+  M5 -->|has_impl| I5
+  M7 -->|has_impl| I6
+  M5 -.->|has_impl 开关| I7
+  M8 -->|has_impl| I8
+  M8 -.->|has_impl 开关| I9
+
+  %% 域内：决策治理 + 演化
+  DE1 -->|governs| M1
+  DE2 -->|governs| M2
+  DE3 -->|governs| M1
+  DE4 -->|governs| M7
+  DE5 -->|governs| M5
+  DE2 -->|supersedes| DE2old
+
+  %% 案例 → 证据/根因
+  C1 -->|evidences| RB2
+  C2 -->|evidences| RB2
+  C3 -->|evidences| RB1
+  C4 -->|evidences| RB1
+  C5 -->|evidences| RB3
+  C1 -.->|caused_by| M1
+  C4 -.->|caused_by| M6
+
+  %% 排障层 → 机制/死路
+  RB1 -->|applies_to| M2
+  RB1 -->|applies_to| M5
+  RB2 -->|applies_to| M1
+  RB3 -->|applies_to| M8
+  RB1 -->|avoids| P1
+  RB1 -->|avoids| P2
+  RB1 -->|avoids| P3
+  RB2 -->|avoids| P4
+
+  %% 跨域唯一通道：依赖共享环境层
+  M1 ==>|depends_on| E1
+  M3 ==>|depends_on| E2
+  M2 ==>|depends_on| E3
+  M5 ==>|depends_on| E4
+  M8 ==>|depends_on| E5
+  RB1 ==>|depends_on| E3
+  RB2 ==>|depends_on| E1
+
+  style D1 fill:#F0F4FC,stroke:#5178C6
+  style D2 fill:#EAE2FE,stroke:#8569CB
+  style D3 fill:#FEE3E2,stroke:#D25D5A
+  style SHARED fill:#DFF5E5,stroke:#509863
+  style TROUBLE fill:#FEF1CE,stroke:#D4B45B

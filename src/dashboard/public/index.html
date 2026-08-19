@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>opencode memory archive</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="rail">
+        <div class="brand">
+          <div class="brand-mark">OM</div>
+          <div>
+            <strong>memory archive</strong>
+            <span>personal object memory</span>
+          </div>
+        </div>
+
+        <section class="rail-section">
+          <p class="eyebrow">Corpus</p>
+          <div id="metric-grid" class="metric-grid skeleton-block"></div>
+        </section>
+
+        <section class="rail-section">
+          <p class="eyebrow">Source databases</p>
+          <div id="source-list" class="source-list"></div>
+        </section>
+
+        <section class="rail-section backfill-section">
+          <p class="eyebrow">Historical consolidation</p>
+          <div class="backfill-progress"><i id="backfill-bar"></i></div>
+          <div id="backfill-summary" class="backfill-summary">正在读取队列…</div>
+          <div class="backfill-actions"><button id="backfill-toggle" type="button">暂停</button><button id="backfill-retry" type="button">重试失败</button></div>
+        </section>
+
+        <section class="rail-section hierarchy-section">
+          <p class="eyebrow">Adaptive hierarchy</p>
+          <div class="backfill-progress"><i id="hierarchy-bar"></i></div>
+          <div id="hierarchy-summary" class="backfill-summary">尚未运行</div>
+        </section>
+
+        <section class="rail-section rail-bottom">
+          <p class="eyebrow">Safety boundary</p>
+          <p class="rail-note">Only sanitized manifests are displayed. Raw assistant text and successful tool output remain in the source databases.</p>
+          <div class="status-line"><i></i><span>localhost only</span></div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="masthead">
+          <div>
+            <p class="eyebrow">Local knowledge substrate</p>
+            <h1>会话不是记忆，<br /><em>但它是记忆的证据。</em></h1>
+          </div>
+          <div class="masthead-meta">
+            <span id="scan-time">SCANNED —</span>
+            <span>FTS5 / TRIGRAM</span>
+          </div>
+        </header>
+
+        <nav class="view-tabs" aria-label="管理台视图">
+          <button class="view-tab active" data-view="archive" type="button">会话档案 <span>L0 / L1</span></button>
+          <button class="view-tab" data-view="knowledge" type="button">长期方法知识 <span>L2 / L3</span></button>
+          <button class="view-tab" data-view="observability" type="button">召回观测 <span>Telemetry</span></button>
+        </nav>
+
+        <div id="archive-view" class="view-panel active">
+        <section class="search-panel">
+          <label class="search-box">
+            <span>⌕</span>
+            <input id="search-input" type="search" autocomplete="off" placeholder="搜索意图、文件、命令、错误，例如 Nacos / NewMinuteDog" />
+            <kbd>⌘ K</kbd>
+          </label>
+          <div class="search-meta">
+            <span id="result-count">正在读取索引…</span>
+            <button id="clear-search" class="text-button" type="button">清除检索</button>
+          </div>
+        </section>
+
+        <section class="corpus-grid">
+          <div class="archive-column">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Session manifests</p>
+                <h2>档案流</h2>
+              </div>
+              <div class="legend"><span class="dot error"></span>含失败工具调用</div>
+            </div>
+            <div id="session-list" class="session-list" aria-live="polite"></div>
+            <button id="load-more" class="load-more" type="button" hidden>继续加载</button>
+          </div>
+
+          <aside class="analysis-column">
+            <section class="analysis-block">
+              <p class="eyebrow">Tool ecology</p>
+              <h3>最常使用</h3>
+              <div id="tool-chart" class="bar-chart"></div>
+            </section>
+            <section class="analysis-block">
+              <p class="eyebrow">Workspaces</p>
+              <h3>活动目录</h3>
+              <ol id="directory-list" class="rank-list"></ol>
+            </section>
+            <section class="analysis-block artifact-key">
+              <p class="eyebrow">Derived anchors</p>
+              <div id="artifact-kinds" class="artifact-kinds"></div>
+            </section>
+          </aside>
+        </section>
+        </div>
+
+        <div id="knowledge-view" class="view-panel">
+          <header class="knowledge-head">
+            <div><p class="eyebrow">Curated methodology</p><h2>方法目录与关系图</h2></div>
+            <div class="knowledge-stats"><b id="knowledge-count">0</b><span>objects</span><b id="relation-count">0</b><span>relations</span></div>
+          </header>
+          <section class="knowledge-layout">
+            <aside class="knowledge-tree-panel">
+              <label class="knowledge-search"><span>⌕</span><input id="knowledge-search" type="search" placeholder="搜索长期知识" /></label>
+              <div id="knowledge-tree" class="knowledge-tree"></div>
+            </aside>
+            <div class="knowledge-graph-panel">
+              <div class="graph-toolbar">
+                <p>对象继承图 <span>点击对象修改</span></p>
+              </div>
+              <div id="knowledge-hierarchy" class="knowledge-hierarchy" role="tree" aria-label="知识对象继承图"></div>
+              <div id="graph-empty" class="empty-state" hidden><b>知识层还是空的</b><span>idle 整理完成后，entry 和关系会出现在这里。</span></div>
+            </div>
+          </section>
+        </div>
+
+        <div id="observability-view" class="view-panel">
+          <header class="knowledge-head">
+            <div><p class="eyebrow">Memory telemetry</p><h2>召回观测与评估</h2></div>
+            <div class="telemetry-note">Hit Rate 不是人工召回率<br />需反馈形成 ground truth</div>
+          </header>
+          <div id="telemetry-metrics" class="telemetry-metrics"></div>
+          <section class="telemetry-grid">
+            <article class="telemetry-panel trend-panel"><p class="eyebrow">Daily recall</p><h3>调用与命中趋势</h3><svg id="recall-trend" viewBox="0 0 720 220"></svg></article>
+            <article class="telemetry-panel"><p class="eyebrow">Capability domains</p><h3>能力域命中</h3><div id="domain-metrics" class="telemetry-bars"></div></article>
+            <article class="telemetry-panel"><p class="eyebrow">Projects</p><h3>项目覆盖</h3><div id="project-metrics" class="telemetry-bars"></div></article>
+            <article class="telemetry-panel"><p class="eyebrow">Loaded roles</p><h3>类加载构成</h3><div id="role-metrics" class="telemetry-bars"></div></article>
+          </section>
+          <section class="recall-log-section">
+            <div class="section-heading"><div><p class="eyebrow">Recall log</p><h2>最近召回</h2></div><span id="recall-total" class="legend"></span></div>
+            <div id="recall-log" class="recall-log"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <dialog id="detail-dialog" class="detail-dialog">
+      <article id="detail-content"></article>
+      <button id="close-detail" class="dialog-close" type="button" aria-label="关闭">×</button>
+    </dialog>
+
+    <dialog id="memory-dialog" class="memory-dialog">
+      <form id="memory-form">
+        <input id="memory-id" type="hidden" />
+        <header><p class="eyebrow">Knowledge object editor</p><h2>修改知识对象</h2></header>
+        <label>标题<input id="memory-title" required /></label>
+        <label>内容<textarea id="memory-content" rows="9" required></textarea></label>
+        <label>角色<select id="memory-role"><option value="interface">interface</option><option value="abstract">abstract</option><option value="implementation">implementation</option><option value="instance">instance</option><option value="resource">resource</option></select></label>
+        <label>契约 JSON<textarea id="memory-contract" rows="5"></textarea></label>
+        <label>实现增量 JSON<textarea id="memory-delta" rows="5"></textarea></label>
+        <div id="memory-provenance" class="memory-provenance"></div>
+        <footer><button id="delete-memory" class="danger-button" type="button">删除对象</button><span class="footer-spacer"></span><button id="cancel-memory" type="button">取消</button><button class="primary-button" type="submit">保存修改</button></footer>
+      </form>
+    </dialog>
+
+    <template id="empty-template">
+      <div class="empty-state"><b>没有命中</b><span>换一个更短的关键词，或切换数据源。</span></div>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

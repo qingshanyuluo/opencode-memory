@@ -1,0 +1,30 @@
+flowchart TB
+  subgraph DOMAIN["业务域簇 ×N（分钟舔狗 / videotips / 多选一…）"]
+    MECH["mechanism<br/>系统行为契约<br/><i>timer 生命周期 / 在线判定 / 周期触发</i>"]
+    IMPL["实现锚点<br/><i>文件 / Redis key / Nacos 配置 / AB key</i>"]
+    DEC["decision<br/>决策口径"]
+    CASE["case<br/>事件案例（PR / 上线 / 验证）"]
+  end
+
+  subgraph SHARED["共享环境层（唯一跨域连接点）"]
+    ENV["environment<br/><i>SLS / Redis 集群 / BytePlus 语义 / Nacos 热加载</i>"]
+  end
+
+  subgraph TROUBLE["排障资产层"]
+    RB["runbook<br/>症状→排查路径"]
+    PIT["pitfall<br/>已证伪死路"]
+  end
+
+  MECH -->|has_impl| IMPL
+  DEC -->|governs| MECH
+  DEC -->|supersedes<br/>valid_to 失效| DEC
+  RB -->|applies_to| MECH
+  RB -->|avoids| PIT
+  CASE -->|evidences| RB
+  CASE -->|caused_by| MECH
+  MECH -->|depends_on| ENV
+  RB -->|depends_on| ENV
+
+  style DOMAIN fill:#F0F4FC,stroke:#5178C6
+  style SHARED fill:#DFF5E5,stroke:#509863
+  style TROUBLE fill:#FEF1CE,stroke:#D4B45B

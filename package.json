@@ -1,0 +1,35 @@
+{
+  "name": "opencode-memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bootstrap": "bun scripts/bootstrap.ts",
+    "dashboard": "bun src/index.ts",
+    "extract:behavior": "bun scripts/extract-behavior.ts",
+    "organize:knowledge": "bun scripts/organize-knowledge.ts",
+    "refactor:knowledge": "bun scripts/build-hierarchy.ts",
+    "index:domains": "bun scripts/index-domains.ts",
+    "prune:knowledge": "bun scripts/prune-knowledge.ts",
+    "refine": "bun scripts/refine.ts",
+    "reclassify:domains": "bun scripts/reclassify-domains.ts",
+    "fix:orphans": "bun scripts/fix-orphans.ts",
+    "eval:recall": "bun scripts/blind-eval-recall.ts",
+    "telemetry:import": "bun scripts/import-telemetry.ts",
+    "build:hierarchy": "bun scripts/build-hierarchy.ts",
+    "backfill": "bun scripts/backfill.ts",
+    "daemon:install": "bun scripts/install-daemon.ts",
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.18.9",
+    "@types/bun": "latest",
+    "typescript": "latest"
+  },
+  "dependencies": {
+    "jsonrepair": "^3.15.0"
+  }
+}
