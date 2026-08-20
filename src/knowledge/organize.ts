@@ -15,7 +15,7 @@ const ORGANIZER_PROMPT = `你负责从带证据的 coding-agent 行为图中整�
     "title": "简短易读标题",
     "content": "长期知识：什么是真的、为什么、何时使用、重要边界",
     "role": "implementation 或 resource",
-    "kind": "自由业务类别，例如排障规程、平台手册、工具坑",
+    "kind": "知识形态四选一：排障规程（遇到某类问题按什么证据顺序排查）/平台手册（某平台/工具/存储怎么用、怎么查、怎么验证）/工具坑（某个坑、死路、反例）/抽象原则（跨需求可复用的方法论、架构原则、设计模式）",
     "namespace": "使用提供的项目命名空间，或更窄且稳定的中文主题",
     "contract": {"triggers": ["何时使用"], "inputs": ["需要什么"], "outputs": ["应得到什么"], "verification": ["如何验真"]},
     "delta": {"steps": ["具体项目步骤"], "overrides": {}, "boundaries": ["边界"]},
@@ -76,7 +76,7 @@ function validateProposal(value: unknown, behavior: EpisodeBehavior, defaultName
     const content = string(entry.content);
     const localId = string(entry.localId) || `k${entries.length + 1}`;
     const role = string(entry.role);
-    const kind = string(entry.kind) || "方法知识";
+    const kind = string(entry.kind) || "排障规程";
     const namespace = string(entry.namespace) || defaultNamespace;
     const contract = entry.contract && typeof entry.contract === "object" && !Array.isArray(entry.contract)
       ? entry.contract as Record<string, unknown> : {};

@@ -4,16 +4,19 @@ import { createConfiguredJsonModel, type JsonModel } from "../behavior/model.ts"
 import { KnowledgeRepository, type MemoryEntry } from "./repository.ts";
 import { seriate } from "../similarity/bigram.ts";
 
-const DOMAIN_PROMPT = `你是知识能力域发现器。输入一批知识条目，请把它们聚成若干"能力域"（粗粒度的、跨项目可复用的能力主题，例如：日志诊断、数据查询、配置管理、部署发布、消息链路排障、代码库分析、验证评测、服务契约等）。
+const DOMAIN_PROMPT = `你是知识能力域划分器。把一批知识条目划分到若干"能力域"。
 
-只输出 JSON：{"parents":[{"title":"能力域名","content":"能力域说明：解决什么问题、边界","contract":{"triggers":[],"inputs":[],"outputs":[],"invariants":[],"verification":[]},"tags":[],"confidence":0.0,"childIds":["entry-id-1","entry-id-2"]}]}
+能力域 = agent 的认知能力（"能做什么"），是稳定、正交的顶层分类。它回答"这是一类什么能力"，而不是"针对什么对象"或"用了什么产品/工具"。
 
-规则：
-- 能力域是粗粒度主题，每域通常 5-40 个成员；宁粗勿细，尽量聚成 3-12 个能力域。
-- 同一条目只属于一个能力域。
-- 能力域名要抽象、稳定、跨项目可复用；禁止具体实现名、项目名、表名、文件路径。
-- 不得加入输入中不存在的 childId。
-- 无法归入任何能力域的条目不输出。
+只输出 JSON：{"parents":[{"title":"能力域名","content":"能力域说明：这个能力解决什么问题、边界在哪","contract":{"triggers":[],"inputs":[],"outputs":[],"invariants":[],"verification":[]},"tags":[],"confidence":0.0,"childIds":["entry-id-1","entry-id-2"]}]}
+
+划分原则（硬约束）：
+- 能力域必须用"动词/能力"命名，例如：诊断、查询、配置、验证、部署、分析、契约设计、工程化、检索等。
+- 禁止用"对象/领域"（名词，如"消息""数据""用户""代码""存储"）命名能力域。
+- 禁止用具体产品名、项目名、组件名、任务名（如 opencode、TIM、BytePlus、Redis、DMS、SLS、msgcenter、某个具体改动）命名能力域。
+- 相近能力合并，能力域总数控制在 8-12 个，宁粗勿细。
+- 同一条目只属于一个能力域；不得加入输入中不存在的 childId。
+- 无法归入任何能力的条目不输出。
 - 全部简体中文。`;
 
 const REDUCE_PROMPT = `你是能力域归并器。输入是不同批次各自发现的能力域候选，请合并语义相同/高度重叠的能力域，统一命名。
@@ -22,8 +25,8 @@ const REDUCE_PROMPT = `你是能力域归并器。输入是不同批次各自发
 
 规则：
 - 每个输入 proposalId 必须且只能出现一次。
-- 语义相同或高度重叠的合并；不同能力域保持独立。
-- 能力域名要抽象、稳定、跨项目可复用。
+- 语义相同或高度重叠的合并；不同能力保持独立。
+- 能力域名必须是"能力/动词"（诊断、查询、配置、验证、部署、分析、契约、工程化、检索），禁止产品名、对象名、任务名。
 - 全部简体中文。`;
 
 function hash(value: string): string { return createHash("sha256").update(value).digest("hex"); }
@@ -53,6 +56,7 @@ export class DomainDiscoverer {
     if (implementations.length === 0) return { domains: 0, assigned: 0 };
     const byId = new Map(implementations.map((entry) => [entry.id, entry]));
     this.database.query("DELETE FROM entries WHERE role='interface' AND kind='能力域'").run();
+    this.database.query("UPDATE entries SET domain=NULL WHERE role IN ('implementation','interface','abstract')").run();
 
     const ordered = seriate(implementations, (entry) => `${entry.title} ${entry.content.slice(0, 300)}`);
     const BATCH = 32;
@@ -90,10 +94,17 @@ export class DomainDiscoverer {
     const domains = await this.reduceDomains(proposals);
 
     const now = Date.now();
+    const insert = this.database.query(`
+      INSERT INTO entries(id,title,content,role,kind,namespace,domain,contract,delta,tags,source_refs,status,confidence,valid_from,valid_to,created_at,updated_at)
+      VALUES (?, ?, ?, 'interface', '能力域', 'global', ?, ?, '{}', ?, '[]', 'active', 1, ?, NULL, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET title=excluded.title, content=excluded.content, domain=excluded.domain, updated_at=excluded.updated_at
+    `);
     const updateDomain = this.database.query("UPDATE entries SET domain=?,updated_at=? WHERE id=?");
     let assigned = 0;
     this.database.transaction(() => {
       for (const domain of domains) {
+        const id = domainInterfaceId(domain.title);
+        insert.run(id, domain.title, domain.content, domain.title, JSON.stringify({}), JSON.stringify([]), now, now, now);
         for (const childId of domain.childIds) {
           updateDomain.run(domain.title, now, childId);
           assigned += 1;
@@ -140,13 +151,13 @@ export class DomainDiscoverer {
       proposalIds.forEach((id) => used.add(id));
       const sources = proposalIds.map((id) => byId.get(id) as DomainProposal);
       result.push({
-        id: domainInterfaceId(text(item.title) || sources[0]?.title || ""),
+        id: `rd_${chunkIndex}_${result.length}`,
         title: text(item.title) || sources[0]?.title || "",
         content: text(item.content) || sources[0]?.content || "",
         childIds: [...new Set(sources.flatMap((source) => source.childIds))],
       });
     }
-    for (const proposal of proposals) if (!used.has(proposal.id)) result.push({ ...proposal, id: domainInterfaceId(proposal.title) });
+    for (const proposal of proposals) if (!used.has(proposal.id)) result.push({ ...proposal });
     return result;
   }
 }

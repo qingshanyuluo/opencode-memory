@@ -4,7 +4,7 @@ import { createConfiguredJsonModel, type JsonModel } from "../behavior/model.ts"
 import { KnowledgeRepository, type MemoryEntry } from "./repository.ts";
 import { insertStructuralRelation } from "./relations.ts";
 import { similarPairs } from "../similarity/bigram.ts";
-import { DomainDiscoverer } from "./domain-discovery.ts";
+import { DomainDiscoverer, domainInterfaceId } from "./domain-discovery.ts";
 
 interface Atom {
   id: string;
@@ -28,26 +28,28 @@ interface ParentProposal {
   domain: string | null;
 }
 
-const MAP_PROMPT = `你是知识整理的 Map 阶段。输入是一批同一能力域下的原子知识。请把它们归组成若干抽象父契约，每组建一个父契约。
+const MAP_PROMPT = `你是知识抽象器。输入是一批同一能力域下的原子知识。请把它们按"对象/领域"（针对什么）归组成若干中间抽象契约。
 
-只输出 JSON：{"parents":[{"title":"父契约名","content":"共同能力与边界","contract":{"triggers":[],"inputs":[],"outputs":[],"invariants":[],"verification":[]},"tags":[],"confidence":0.0,"childIds":["atom-id-1","atom-id-2"]}]}
+只输出 JSON：{"parents":[{"title":"抽象契约名","content":"针对什么对象、解决什么问题、边界","contract":{"triggers":[],"inputs":[],"outputs":[],"invariants":[],"verification":[]},"tags":[],"confidence":0.0,"childIds":["atom-id-1","atom-id-2"]}]}
 
 硬约束：
-- 每个 parent 至少 2 个 child；同一个 child 最多属于一个 parent。
-- 优先把可归并的原子合成 4-10 个成员的大组，宁粗勿细；只有确实无法归入任何大组时才保留小组或不归组。
-- 禁止产生大量 2-3 个成员的小 parent：2-3 个成员的 parent 应进一步合并到更大的组。
-- 父契约必须比子节点更抽象，禁止只改写标题或复制子节点内容。
+- 中间抽象按"针对什么对象/领域"划分（名词性），例如：消息、用户、数据、代码、配置、服务、工具链等。
+- 禁止用具体产品名、工具名、组件名（如 opencode、TIM、BytePlus、Redis、DMS、SLS、msgcenter、Spring Boot 等）作为抽象契约名——产品/工具名应体现在条目的 namespace/tags，而非抽象层。
+- 禁止用单个具体任务/改动作为抽象名。
+- 每个抽象至少 2 个成员，优先 4-10 个；宁粗勿细，禁止大量 2-3 成员的小抽象。
+- 抽象契约必须比成员更抽象，禁止只改写标题或复制子节点内容。
 - 不得加入输入中不存在的 childId。
 - 若无有效分组，输出 {"parents":[]}。`;
 
-const REDUCE_PROMPT = `你是知识整理的全局 Reduce 阶段。输入是 Map 阶段产生的父概念。请合并重复/近重复父概念，统一命名与契约。
+const REDUCE_PROMPT = `你是知识整理的全局 Reduce 阶段。输入是 Map 阶段产生的抽象契约。请合并重复/近重复的抽象契约，统一命名与契约。
 
-只输出 JSON：{"parents":[{"title":"规范父契约名","content":"统一说明","contract":{"triggers":[],"inputs":[],"outputs":[],"invariants":[],"verification":[]},"tags":[],"confidence":0.0,"proposalIds":["proposal-id-1"]}]}
+只输出 JSON：{"parents":[{"title":"规范抽象契约名","content":"统一说明","contract":{"triggers":[],"inputs":[],"outputs":[],"invariants":[],"verification":[]},"tags":[],"confidence":0.0,"proposalIds":["proposal-id-1"]}]}
 
 硬约束：
 - 每个输入 proposalId 必须且只能出现一次；不允许丢失。
-- 语义相同或高度重叠的 proposal 合并；不同概念保持独立（允许 proposalIds 只有 1 个）。
-- 规范父契约必须比其所有来源更稳定、更抽象。`;
+- 语义相同或高度重叠的 proposal 合并；不同对象保持独立（允许 proposalIds 只有 1 个）。
+- 规范契约名必须是"对象/领域"（名词），禁止产品名、工具名、任务名。
+- 规范契约必须比其所有来源更稳定、更抽象。`;
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -87,22 +89,18 @@ export class AdaptiveHierarchyOrganizer {
         VALUES (?, 'running', 0, 'map', ?, ?, ?)
       `).run(runId, source.length, now, now);
 
-      let levelAtoms = source;
       const levels: Array<{ parents: ParentProposal[]; links: Array<[string, string]> }> = [];
-      for (let level = 0; level < 8 && levelAtoms.length >= 2; level += 1) {
-        this.progress(runId, level, "map", 0, Math.ceil(levelAtoms.length / 32));
-        const proposals = await this.mapLevel(runId, level, levelAtoms);
-        if (proposals.length === 0) break;
-        this.progress(runId, level, "reduce", 0, 1);
+      this.progress(runId, 0, "map", 0, Math.ceil(source.length / 32));
+      const proposals = await this.mapLevel(runId, 0, source);
+      if (proposals.length > 0) {
+        this.progress(runId, 0, "reduce", 0, 1);
         const parents = await this.reduceLevel(proposals);
-        if (parents.length === 0 || parents.length >= levelAtoms.length * 0.85) break;
-        const childToParent = new Map<string, string>();
-        for (const parent of parents) for (const childId of parent.childIds) if (!childToParent.has(childId)) childToParent.set(childId, parent.id);
-        const links = [...childToParent.entries()].map(([childId, parentId]) => [childId, parentId] as [string, string]);
-        levels.push({ parents, links });
-        levelAtoms = parents.map((parent) => ({ id: parent.id, title: parent.title, content: parent.content, role: "interface", domain: parent.domain, contract: parent.contract, tags: parent.tags, sourceIds: parent.childIds }));
-        this.progress(runId, level + 1, "map", 0, 0);
-        if (parents.length === 1) break;
+        if (parents.length > 0) {
+          const childToParent = new Map<string, string>();
+          for (const parent of parents) for (const childId of parent.childIds) if (!childToParent.has(childId)) childToParent.set(childId, parent.id);
+          const links = [...childToParent.entries()].map(([childId, parentId]) => [childId, parentId] as [string, string]);
+          levels.push({ parents, links });
+        }
       }
 
       this.apply(levels);
@@ -318,8 +316,8 @@ export class AdaptiveHierarchyOrganizer {
       const hierarchyChildren = new Set(levels.flatMap((level) => level.links.map(([childId]) => childId)));
       const hierarchyParents = levels.flatMap((level) => level.parents);
       for (const parent of hierarchyParents) {
-        if (!hierarchyChildren.has(parent.id)) {
-          this.database.query("UPDATE entries SET kind='能力域' WHERE id=?").run(parent.id);
+        if (!hierarchyChildren.has(parent.id) && parent.domain) {
+          insertStructuralRelation(this.database, parent.id, domainInterfaceId(parent.domain), "EXTENDS", now);
         }
       }
       this.database.query(`
