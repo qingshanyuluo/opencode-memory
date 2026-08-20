@@ -7,7 +7,7 @@ let database: Database | undefined;
 afterEach(() => database?.close());
 
 describe("KnowledgePruner", () => {
-  test("selects single-origin short implementations and prunes on demand", () => {
+  test("selects short single-origin implementations for LLM verdict and prunes on demand", () => {
     database = openMemoryDatabase(":memory:");
     const insert = database.query(`
       INSERT INTO entries(id,title,content,role,kind,namespace,domain,tags,source_refs,status,valid_from,created_at,updated_at)
@@ -21,7 +21,7 @@ describe("KnowledgePruner", () => {
     `).run();
 
     const pruner = new KnowledgePruner(database);
-    expect(pruner.selectCandidates().map(({ id }) => id)).toEqual(["trivial"]);
+    expect(pruner.selectCandidates().map(({ id }) => id).sort()).toEqual(["trivial", "valuable"]);
 
     expect(pruner.prune("trivial", "低价值")).toBe(1);
     const status = database.query<{ status: string }, [string]>("SELECT status FROM entries WHERE id = ?").get("trivial");

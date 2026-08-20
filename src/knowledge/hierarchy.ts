@@ -3,8 +3,8 @@ import type { Database } from "bun:sqlite";
 import { createConfiguredJsonModel, type JsonModel } from "../behavior/model.ts";
 import { KnowledgeRepository, type MemoryEntry } from "./repository.ts";
 import { insertStructuralRelation } from "./relations.ts";
-import { domainInterfaceId } from "./domains.ts";
 import { similarPairs } from "../similarity/bigram.ts";
+import { DomainDiscoverer } from "./domain-discovery.ts";
 
 interface Atom {
   id: string;
@@ -77,6 +77,7 @@ export class AdaptiveHierarchyOrganizer {
         WHERE status='running'
       `).run(Date.now(), Date.now());
       const repository = new KnowledgeRepository(this.database);
+      await new DomainDiscoverer(this.database, this.model).discover();
       const source = repository.graph(false).entries
         .filter(({ role, status }) => role === "implementation" && status !== "rejected")
         .map((entry) => this.toAtom(entry));
@@ -317,10 +318,23 @@ export class AdaptiveHierarchyOrganizer {
       const hierarchyChildren = new Set(levels.flatMap((level) => level.links.map(([childId]) => childId)));
       const hierarchyParents = levels.flatMap((level) => level.parents);
       for (const parent of hierarchyParents) {
-        if (!hierarchyChildren.has(parent.id) && parent.domain) {
-          insertStructuralRelation(this.database, parent.id, domainInterfaceId(parent.domain), "EXTENDS", now);
+        if (!hierarchyChildren.has(parent.id)) {
+          this.database.query("UPDATE entries SET kind='能力域' WHERE id=?").run(parent.id);
         }
       }
+      this.database.query(`
+        WITH RECURSIVE dom(id, domain) AS (
+          SELECT id, title FROM entries
+          WHERE role='interface' AND kind='能力域' AND valid_to IS NULL
+          UNION
+          SELECT l.source_entry_id, dom.domain
+          FROM links l JOIN dom ON l.target_entry_id = dom.id
+          WHERE l.relation IN ('IMPLEMENTS','EXTENDS') AND l.valid_to IS NULL
+        )
+        UPDATE entries SET domain = (SELECT domain FROM dom WHERE dom.id = entries.id LIMIT 1)
+        WHERE valid_to IS NULL AND role IN ('implementation','interface','abstract')
+          AND id IN (SELECT id FROM dom)
+      `).run();
       new KnowledgeRepository(this.database).rebuildFts();
     })();
   }

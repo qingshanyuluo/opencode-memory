@@ -50,17 +50,14 @@ function familyId(directory: string, title: string): string {
 }
 
 function priority(row: CandidateRow): number {
-  const text = row.artifact_text.toLowerCase();
-  const platformSignals = ["aliyun", "sls", "dms", "nacos", "redis", "byteplus", "kubectl", "postgres", "mysql"]
-    .reduce((score, term) => score + (text.includes(term) ? 40 : 0), 0);
-  return row.tool_call_count + row.tool_error_count * 8 + Math.min(row.part_count / 10, 100) + platformSignals;
+  return row.tool_call_count + row.tool_error_count * 8 + Math.min(row.part_count / 10, 100);
 }
 
 function isTechnical(row: CandidateRow): boolean {
   if (row.tool_call_count < 2) return false;
   const text = row.artifact_text.toLowerCase();
   return text.includes("[file]")
-    || /\b(?:git|gradle|mvn|npm|bun|pnpm|yarn|pytest|cargo|kubectl|aliyun|docker|gh|dms|sls|nacos|redis|psql|mysql)\b/.test(text);
+    || /\b(?:git|gradle|mvn|npm|bun|pnpm|yarn|pytest|cargo|kubectl|docker|gh|go test)\b/.test(text);
 }
 
 export function populateBackfillQueue(memory: BunDatabase, bootstrapPath: string): number {

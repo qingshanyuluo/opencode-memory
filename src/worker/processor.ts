@@ -66,7 +66,7 @@ export class MemoryProcessor {
       const hasCodeSignal = timeline.events.some((event) =>
         event.role === "tool" && (
           codeTools.has(event.tool ?? "")
-          || (event.tool === "bash" && /\b(?:git|gradle|mvn|npm|bun|pnpm|yarn|pytest|cargo|go test|kubectl|aliyun|docker|gh)\b/i.test(event.text))
+          || (event.tool === "bash" && /\b(?:git|gradle|mvn|npm|bun|pnpm|yarn|pytest|cargo|go test|kubectl|docker|gh)\b/i.test(event.text))
         )
       );
       if (!hasCodeSignal) {

@@ -16,6 +16,8 @@
   <dict>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>OPENCODE_MEMORY_BACKFILL_CONCURRENCY</key>
+    <string>4</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>

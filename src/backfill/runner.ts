@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { KnowledgeDomainIndexer } from "../knowledge/indexer.ts";
 import { KnowledgePruner } from "../knowledge/prune.ts";
 import { AdaptiveHierarchyOrganizer } from "../knowledge/hierarchy.ts";
 import { MemoryProcessor } from "../worker/processor.ts";
@@ -31,7 +30,6 @@ export class BackfillRunner {
     if (this.finalizing) return;
     this.finalizing = true;
     try {
-      await new KnowledgeDomainIndexer(this.database).run();
       await new AdaptiveHierarchyOrganizer(this.database).run().catch(() => null);
       await new KnowledgePruner(this.database).run().catch(() => 0);
     } finally {

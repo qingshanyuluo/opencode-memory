@@ -5,7 +5,6 @@ import type { AppConfig } from "../config.ts";
 import { BehaviorRepository } from "./behavior-repository.ts";
 import { DashboardRepository } from "./repository.ts";
 import { KnowledgeRepository } from "../knowledge/repository.ts";
-import { KnowledgeDomainIndexer } from "../knowledge/indexer.ts";
 import { KnowledgePruner } from "../knowledge/prune.ts";
 import { AdaptiveHierarchyOrganizer } from "../knowledge/hierarchy.ts";
 import { TelemetryRepository } from "../telemetry/repository.ts";
@@ -50,7 +49,6 @@ export function startDashboard(config: AppConfig, memoryDatabase: Database): Das
   const repository = new DashboardRepository(database);
   const behavior = new BehaviorRepository(memoryDatabase);
   const knowledge = new KnowledgeRepository(memoryDatabase);
-  const indexer = new KnowledgeDomainIndexer(memoryDatabase);
   const pruner = new KnowledgePruner(memoryDatabase);
   const hierarchy = new AdaptiveHierarchyOrganizer(memoryDatabase);
   const telemetry = new TelemetryRepository(memoryDatabase);
@@ -58,7 +56,6 @@ export function startDashboard(config: AppConfig, memoryDatabase: Database): Das
   importOpencodeTelemetry(memoryDatabase);
   const telemetryImporter = setInterval(() => importOpencodeTelemetry(memoryDatabase), 60_000);
   const processor = new MemoryProcessor(memoryDatabase, config.bootstrapDbPath, undefined, () => {
-    indexer.request();
     pruner.request();
     // Hierarchy builds are expensive and cached; run only after the stream settles.
   });
@@ -194,9 +191,6 @@ export function startDashboard(config: AppConfig, memoryDatabase: Database): Das
             FROM hierarchy_runs ORDER BY created_at DESC LIMIT 1
           `).get() ?? null;
           return json({ run });
-        }
-        if (url.pathname === "/api/memory/index" && request.method === "POST") {
-          return indexer.run().then((result) => json(result));
         }
         if (url.pathname === "/api/memory/prune" && request.method === "POST") {
           return pruner.run().then((result) => json(result));

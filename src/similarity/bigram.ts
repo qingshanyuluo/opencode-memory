@@ -60,3 +60,45 @@ export function similarPairs(
   }
   return result.sort((left, right) => right.score - left.score);
 }
+
+export function seriate<T>(items: T[], text: (item: T) => string, threshold = 0.15): T[] {
+  if (items.length <= 2) return items;
+  const pairs = similarPairs(items.map((item) => ({ id: String(items.indexOf(item)), text: text(item) })), threshold);
+  const indexOf = new Map(items.map((item, index) => [String(index), item]));
+  const sim = new Map<string, Map<string, number>>();
+  for (const pair of pairs) {
+    let fa = sim.get(pair.a);
+    if (!fa) sim.set(pair.a, (fa = new Map()));
+    fa.set(pair.b, pair.score);
+    let fb = sim.get(pair.b);
+    if (!fb) sim.set(pair.b, (fb = new Map()));
+    fb.set(pair.a, pair.score);
+  }
+  const result: T[] = [];
+  const used = new Set<string>();
+  let remaining = items.map((item, index) => String(index));
+  while (remaining.length > 0) {
+    let current = remaining[0] as string;
+    result.push(indexOf.get(current) as T);
+    used.add(current);
+    remaining = remaining.filter((id) => !used.has(id));
+    while (remaining.length > 0) {
+      const neighbors = sim.get(current);
+      let best: string | null = null;
+      let bestScore = threshold;
+      for (const id of remaining) {
+        const score = neighbors?.get(id) ?? 0;
+        if (score > bestScore) {
+          bestScore = score;
+          best = id;
+        }
+      }
+      if (!best) break;
+      result.push(indexOf.get(best) as T);
+      used.add(best);
+      remaining = remaining.filter((id) => !used.has(id));
+      current = best;
+    }
+  }
+  return result;
+}

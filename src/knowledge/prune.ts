@@ -9,7 +9,7 @@ const PRUNE_PROMPT = `你是记忆价值审裁员。唯一判断标准是【恢�
 
 特别注意，下面这些【必须保留，绝不要因为它们“通用/无项目名”就剪除】：
 - 抽象方法论、架构原则、审查模式、设计模式（例如“两阶段生成-选择实现”“结构化代码审查排序”“gRPC 容量估算”）——它们是经验归纳，恢复成本高；
-- 任何含项目/平台特定锚点的内容（logstore 名、Redis key、表名、region、dataId、endpoint、端口、集群名等）。
+- 任何含项目/平台特定锚点的内容（日志库名、缓存 key、表名、地域、数据源标识、端点、端口、集群名等）。
 
 剪除的正确例子：
 - “Java 注释避免字面量 */ 提前闭合” → 剪除：编译器立即报错。
@@ -18,16 +18,13 @@ const PRUNE_PROMPT = `你是记忆价值审裁员。唯一判断标准是【恢�
 
 保留的正确例子：
 - “两阶段生成-选择实现模式” → 保留：抽象方法论，需实验归纳。
-- “Redis 集群跨 key Lua 会 CROSSSLOT” → 保留：需踩坑 + 项目特定。
-- “SLS 按 logstore/tag 定位” → 保留：项目特定锚点。
+- “某个存储/中间件跨实例操作会报错、某日志系统按特定维度定位”这类踩坑 + 项目特定锚点 → 保留。
 
 只输出 JSON：{"verdicts":[{"id":"<entry_id>","keep":true,"reason":"一句话理由"}]}
 对输入的每一条都必须给出 verdict，不要遗漏。有疑问时保留。`;
 
-const PROJECT_ANCHOR_KEYWORDS = /(logstore|dataid|data_id|nacos|redis|kubectl|region|endpoint|base_url|baseurl|cluster|namespace|表名|字段|分区|索引|枚举|traceid|trace_id|chatid|userid|appname|appkey|appid|端口|dms|byteplus|\bsls\b|agent_runs|llm_raw)/i;
-
-function hasProjectAnchor(content: string): boolean {
-  return PROJECT_ANCHOR_KEYWORDS.test(content) || /\b[\w.-]+:[\w:.-]+\b/.test(content);
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export interface PruneCandidate {
@@ -35,10 +32,6 @@ export interface PruneCandidate {
   title: string;
   content: string;
   kind: string | null;
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 export class KnowledgePruner {
@@ -66,7 +59,7 @@ export class KnowledgePruner {
         AND length(e.content) < 220
         AND (SELECT count(*) FROM entry_origins o WHERE o.entry_id = e.id) <= 1
     `).all();
-    return rows.filter((entry) => !hasProjectAnchor(`${entry.title} ${entry.content}`));
+    return rows;
   }
 
   async run(): Promise<{ pruned: number; kept: number }> {
