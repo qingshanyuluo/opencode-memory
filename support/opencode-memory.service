@@ -1,0 +1,13 @@
+[Unit]
+Description=opencode-memory daemon
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__BUN__ run start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

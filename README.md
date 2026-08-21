@@ -16,7 +16,7 @@ The installed opencode plugin now queues idle sessions for asynchronous behavior
 
 ## Install
 
-Requirements: macOS + [Bun](https://bun.sh).
+Requirements: macOS / Linux + [Bun](https://bun.sh).
 
 ```bash
 # 1. 安装依赖
@@ -29,16 +29,20 @@ bun install
 # 3. 编译初始语料（一次性读取本机 opencode.db，生成 L1a 索引）
 bun run bootstrap
 
-# 4. 安装 daemon（launchd，开机自启 + 崩溃自愈）+ 生成 opencode 全局插件 loader
+# 4. 安装 daemon 自启动 + 生成 opencode 全局插件 loader
 bun run daemon:install
 
 # 5. 重启 opencode 使插件生效
 ```
 
-安装后 `daemon:install` 会自动把插件 loader 写到
-`~/.config/opencode/plugins/opencode-memory.ts`（路径按实际安装位置动态生成）。
-daemon 以 launchd 为主（`KeepAlive` 自愈），插件只做 health check 兜底并在多
-会话并发下拉起时用文件锁互斥，避免重复绑定端口。
+`daemon:install` 会按平台自动选择自启动方式，并把插件 loader 写到
+`~/.config/opencode/plugins/opencode-memory.ts`（路径按实际安装位置动态生成）：
+
+- **macOS** → launchd（`~/Library/LaunchAgents/io.opencode.memory.plist`，`KeepAlive` 崩溃自愈）。
+- **Linux** → systemd user unit（`~/.config/systemd/user/opencode-memory.service`，`Restart=always`）。
+
+daemon 与插件配合避免重复启动：daemon 启动时若已有健康实例则静默退出，
+插件只在 daemon 挂掉时用文件锁兜底拉起（多会话并发互斥）。
 
 ## Development
 
