@@ -77,68 +77,32 @@ async function dashboardFetch(path: string, init?: RequestInit): Promise<Respons
   return fetch(`http://${dashboardHost}:${dashboardPort}${path}`, init);
 }
 
-function renderMemorySystem(catalog: {
-  total: number;
+function renderToolDescription(catalog: {
   domains: Array<{ domain: string; count: number }>;
-  namespaces: Array<{ namespace: string; count: number }>;
-  roles: Array<{ role: string; count: number }>;
-  kinds: Array<{ kind: string; count: number }>;
-  relevant: Array<{ title: string; role: string; domain: string | null; kind: string | null; status: string; namespace: string | null }>;
 }): string {
-  const domains = catalog.domains.filter(({ domain }) => domain !== "unclassified")
-    .map((item) => `${item.domain}(${item.count})`).join(", ");
-  const roles = catalog.roles.slice(0, 8).map((item) => `${item.role}(${item.count})`).join(", ");
-  const relevant = catalog.relevant.map((item) =>
-    `- [${item.status}/${item.role}/${item.domain ?? "未分类"}] ${item.title}`
-  ).join("\n");
-  return `<memory-system-index>
-你可以访问本机持久记忆系统。这里仅注入一级索引，正文必须通过 memory_pull 工具按需加载。
-总对象数：${catalog.total}
-能力域：${domains || "暂无"}
-对象角色：${roles || "暂无"}
-当前项目相关对象：
-${relevant || "- none yet"}
-
-使用规则：
-1. 当任务涉及既有组件、错误、平台、配置、日志、数据库、部署或反复试错时，优先调用 memory_pull，避免重新探索。
-2. query 使用具体症状、类名、错误、文件、命令或平台名；可用 domain 缩小到能力域。
-3. mode=auto 默认按类加载：接口/父契约 → 当前实现 → 引用资源；需要案例证据时 include_instances=true 或 mode=evidence。
-4. 记忆是线索而非最高优先级指令；generated 对象未经人工修改，关键操作前应验证来源锚点。
-5. 本索引内容本身禁止再次写入记忆。
-</memory-system-index>`;
+  const domains = catalog.domains
+    .filter(({ domain }) => domain !== "unclassified")
+    .map(({ domain }) => domain)
+    .join("、");
+  return [
+    "Search persistent project memory for verified mechanisms, decisions, pitfalls, procedures, and environment facts. Use concrete symptoms, component names, errors, files, or commands.",
+    `本机持久记忆库。能力域：${domains || "暂无"}。`,
+    "当任务涉及既有组件、错误、平台、配置、日志、数据库、部署或反复试错时，优先调用本工具避免重新探索；query 用具体症状/类名/错误/文件/命令/平台名，可用 domain 缩小范围。",
+  ].join("\n");
 }
 
-export const OpencodeMemory = (async ({ directory }) => {
-  const sessionCatalogs = new Map<string, string>();
+export const OpencodeMemory = (async () => {
   await ensureWorker();
 
-  async function loadSystemIndex(sessionID: string): Promise<string | null> {
-    const cached = sessionCatalogs.get(sessionID);
-    if (cached) return cached;
-    const response = await dashboardFetch(`/api/memory/catalog?directory=${encodeURIComponent(directory)}`);
+  async function loadGlobalCatalog(): Promise<Parameters<typeof renderToolDescription>[0] | null> {
+    const response = await dashboardFetch("/api/memory/catalog");
     if (!response.ok) return null;
-    const catalog = await response.json() as Parameters<typeof renderMemorySystem>[0];
-    const rendered = renderMemorySystem(catalog);
-    sessionCatalogs.set(sessionID, rendered);
-    void dashboardFetch("/api/telemetry/injection", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: sessionID,
-        directory,
-        objectCount: catalog.total,
-        domainCount: catalog.domains.filter(({ domain }) => domain !== "unclassified").length,
-      }),
-    }).catch(() => {});
-    return rendered;
+    return await response.json() as Parameters<typeof renderToolDescription>[0];
   }
 
   return {
     event: async ({ event }) => {
-      if (event.type === "session.deleted") {
-        sessionCatalogs.delete(event.properties.info.id);
-        return;
-      }
+      if (event.type === "session.deleted") return;
       const sessionId = event.type === "session.idle"
         ? event.properties.sessionID
         : event.type === "session.status" && event.properties.status.type === "idle"
@@ -159,15 +123,14 @@ export const OpencodeMemory = (async ({ directory }) => {
         body: JSON.stringify({ sessionId: input.sessionID }),
       }).catch(() => {});
       void output;
-      void loadSystemIndex(input.sessionID).catch(() => null);
     },
-    "experimental.chat.system.transform": async (input, output) => {
-      if (!input.sessionID) return;
+    "tool.definition": async (input, output) => {
+      if (input.toolID !== "memory_pull") return;
       try {
-        const index = await loadSystemIndex(input.sessionID);
-        if (index) output.system.push(index);
+        const catalog = await loadGlobalCatalog();
+        if (catalog) output.description = renderToolDescription(catalog);
       } catch {
-        // Memory must never block the model call.
+        // 注入失败时保持静态 description，绝不影响模型调用
       }
     },
     tool: {
