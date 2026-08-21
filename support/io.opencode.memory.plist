@@ -6,12 +6,12 @@
   <string>io.opencode.memory</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/bun</string>
+    <string>__BUN__</string>
     <string>run</string>
     <string>start</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/ll/agent-research/opencode-memory</string>
+  <string>__PROJECT_DIR__</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
@@ -28,8 +28,8 @@
   <key>ProcessType</key>
   <string>Background</string>
   <key>StandardOutPath</key>
-  <string>/Users/ll/.local/share/opencode-memory/daemon.log</string>
+  <string>__DATA_DIR__/daemon.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/ll/.local/share/opencode-memory/daemon.error.log</string>
+  <string>__DATA_DIR__/daemon.error.log</string>
 </dict>
 </plist>

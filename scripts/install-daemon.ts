@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -10,7 +10,12 @@ const dataDirectory = resolve(homedir(), ".local/share/opencode-memory");
 
 mkdirSync(targetDirectory, { recursive: true });
 mkdirSync(dataDirectory, { recursive: true });
-copyFileSync(source, target);
+const bunPath = Bun.which("bun") ?? "/opt/homebrew/bin/bun";
+const plist = readFileSync(source, "utf8")
+  .replaceAll("__BUN__", bunPath)
+  .replaceAll("__PROJECT_DIR__", project)
+  .replaceAll("__DATA_DIR__", dataDirectory);
+writeFileSync(target, plist);
 chmodSync(target, 0o644);
 
 // 生成 opencode 全局插件 loader，re-export 到项目实际的 plugin 文件（路径随安装位置动态生成）
