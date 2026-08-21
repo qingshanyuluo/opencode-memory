@@ -55,8 +55,6 @@ export class DomainDiscoverer {
       .filter(({ role, status }) => role === "implementation" && status !== "rejected");
     if (implementations.length === 0) return { domains: 0, assigned: 0 };
     const byId = new Map(implementations.map((entry) => [entry.id, entry]));
-    this.database.query("DELETE FROM entries WHERE role='interface' AND kind='能力域'").run();
-    this.database.query("UPDATE entries SET domain=NULL WHERE role IN ('implementation','interface','abstract')").run();
 
     const ordered = seriate(implementations, (entry) => `${entry.title} ${entry.content.slice(0, 300)}`);
     const BATCH = 32;
@@ -92,6 +90,7 @@ export class DomainDiscoverer {
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, () => worker()));
 
     const domains = await this.reduceDomains(proposals);
+    if (domains.length === 0) return { domains: 0, assigned: 0 };
 
     const now = Date.now();
     const insert = this.database.query(`
@@ -102,6 +101,8 @@ export class DomainDiscoverer {
     const updateDomain = this.database.query("UPDATE entries SET domain=?,updated_at=? WHERE id=?");
     let assigned = 0;
     this.database.transaction(() => {
+      this.database.query("DELETE FROM entries WHERE role='interface' AND kind='能力域'").run();
+      this.database.query("UPDATE entries SET domain=NULL WHERE role IN ('implementation','interface','abstract')").run();
       for (const domain of domains) {
         const id = domainInterfaceId(domain.title);
         insert.run(id, domain.title, domain.content, domain.title, JSON.stringify({}), JSON.stringify([]), now, now, now);

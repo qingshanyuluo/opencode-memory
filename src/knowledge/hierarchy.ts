@@ -247,7 +247,17 @@ export class AdaptiveHierarchyOrganizer {
       }
     }
     const results = await Promise.all(chunks.map((chunk, index) => this.reduceChunk(chunk, index)));
-    return results.flat();
+    const byTitle = new Map<string, ParentProposal>();
+    for (const parent of results.flat()) {
+      const existing = byTitle.get(parent.title);
+      if (existing) {
+        existing.childIds = [...new Set([...existing.childIds, ...parent.childIds])];
+        if (!existing.domain && parent.domain) existing.domain = parent.domain;
+      } else {
+        byTitle.set(parent.title, parent);
+      }
+    }
+    return [...byTitle.values()];
   }
 
   private async reduceChunk(proposals: ParentProposal[], chunkIndex: number): Promise<ParentProposal[]> {
@@ -256,7 +266,24 @@ export class AdaptiveHierarchyOrganizer {
     const root = value && typeof value === "object" ? value as Record<string, unknown> : {};
     const byId = new Map(proposals.map((proposal) => [proposal.id, proposal]));
     const used = new Set<string>();
-    const parents: ParentProposal[] = [];
+    const byTitle = new Map<string, ParentProposal>();
+    const push = (title: string, content: string, contract: Record<string, unknown>, tags: string[], confidence: number, childIds: string[], domain: string | null) => {
+      const existing = byTitle.get(title);
+      if (existing) {
+        existing.childIds = [...new Set([...existing.childIds, ...childIds])];
+      } else {
+        byTitle.set(title, {
+          id: `mem_${hash(`hierarchy\u0000${title.toLowerCase()}`).slice(0, 24)}`,
+          title,
+          content,
+          contract,
+          tags,
+          confidence,
+          childIds,
+          domain,
+        });
+      }
+    };
     for (const raw of Array.isArray(root.parents) ? root.parents : []) {
       const item = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
       const proposalIds = Array.isArray(item.proposalIds)
@@ -268,19 +295,20 @@ export class AdaptiveHierarchyOrganizer {
       const title = text(item.title) || sources[0]?.title || "";
       const childIds = [...new Set(sources.flatMap((source) => source.childIds))];
       const domains = [...new Set(sources.map(({ domain }) => domain).filter(Boolean))];
-      parents.push({
-        id: `mem_${hash(`hierarchy\u0000${title.toLowerCase()}`).slice(0, 24)}`,
+      push(
         title,
-        content: text(item.content) || sources[0]?.content || "",
-        contract: item.contract && typeof item.contract === "object" && !Array.isArray(item.contract) ? item.contract as Record<string, unknown> : sources[0]?.contract ?? {},
-        tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === "string").slice(0, 12) : sources[0]?.tags ?? [],
-        confidence: typeof item.confidence === "number" ? Math.max(0, Math.min(1, item.confidence)) : Math.max(...sources.map(({ confidence }) => confidence)),
+        text(item.content) || sources[0]?.content || "",
+        item.contract && typeof item.contract === "object" && !Array.isArray(item.contract) ? item.contract as Record<string, unknown> : sources[0]?.contract ?? {},
+        Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === "string").slice(0, 12) : sources[0]?.tags ?? [],
+        typeof item.confidence === "number" ? Math.max(0, Math.min(1, item.confidence)) : Math.max(...sources.map(({ confidence }) => confidence)),
         childIds,
-        domain: domains.length === 1 ? domains[0] as string : null,
-      });
+        domains.length === 1 ? domains[0] as string : null,
+      );
     }
-    for (const proposal of proposals) if (!used.has(proposal.id)) parents.push({ ...proposal, id: `mem_${hash(`hierarchy\u0000${proposal.title.toLowerCase()}`).slice(0, 24)}` });
-    return parents;
+    for (const proposal of proposals) if (!used.has(proposal.id)) {
+      push(proposal.title, proposal.content, proposal.contract, proposal.tags, proposal.confidence, proposal.childIds, proposal.domain);
+    }
+    return [...byTitle.values()];
   }
 
   private async cachedGenerate(stage: string, input: string, prompt: string): Promise<unknown> {
@@ -317,7 +345,10 @@ export class AdaptiveHierarchyOrganizer {
       const hierarchyParents = levels.flatMap((level) => level.parents);
       for (const parent of hierarchyParents) {
         if (!hierarchyChildren.has(parent.id) && parent.domain) {
-          insertStructuralRelation(this.database, parent.id, domainInterfaceId(parent.domain), "EXTENDS", now);
+          const domainId = domainInterfaceId(parent.domain);
+          const exists = this.database.query<{ v: number }, [string]>("SELECT 1 AS v FROM entries WHERE id=?").get(domainId);
+          if (!exists) continue;
+          insertStructuralRelation(this.database, parent.id, domainId, "EXTENDS", now);
         }
       }
       this.database.query(`
