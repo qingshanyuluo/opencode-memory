@@ -1,9 +1,13 @@
 import { tool, type Plugin } from "@opencode-ai/plugin";
+import { closeSync, openSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 
-const projectDirectory = "/Users/ll/agent-research/opencode-memory";
+const projectDirectory = resolve(import.meta.dir, "..");
 const dashboardHost = Bun.env.OPENCODE_MEMORY_DASHBOARD_HOST ?? "127.0.0.1";
 const dashboardPort = Bun.env.OPENCODE_MEMORY_DASHBOARD_PORT ?? "37780";
 const healthUrl = `http://${dashboardHost}:${dashboardPort}/api/health`;
+const lockPath = resolve(homedir(), ".local/share/opencode-memory/worker.lock");
 
 async function isRunning(): Promise<boolean> {
   try {
@@ -14,25 +18,55 @@ async function isRunning(): Promise<boolean> {
   }
 }
 
+function acquireLock(): number | null {
+  try {
+    return openSync(lockPath, "wx");
+  } catch {
+    return null;
+  }
+}
+
+function releaseLock(fd: number): void {
+  try {
+    closeSync(fd);
+    rmSync(lockPath, { force: true });
+  } catch {
+    // 锁文件可能已被其他进程清理，忽略
+  }
+}
+
+async function waitUntilRunning(): Promise<boolean> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (await isRunning()) return true;
+    await Bun.sleep(250);
+  }
+  return false;
+}
+
 let workerReady: Promise<boolean> | undefined;
 
 async function ensureWorker(): Promise<boolean> {
   if (await isRunning()) return true;
   if (!workerReady) {
     workerReady = (async () => {
-      const process = Bun.spawn(["bun", "run", "start"], {
-        cwd: projectDirectory,
-        env: { ...Bun.env },
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr: "ignore",
-      });
-      process.unref();
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        if (await isRunning()) return true;
-        await Bun.sleep(250);
+      const lockFd = acquireLock();
+      if (lockFd === null) {
+        // 另一个 opencode 会话正在拉起 daemon，等它完成即可
+        return waitUntilRunning();
       }
-      return false;
+      try {
+        const process = Bun.spawn(["bun", "run", "start"], {
+          cwd: projectDirectory,
+          env: { ...Bun.env },
+          stdin: "ignore",
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+        process.unref();
+        return waitUntilRunning();
+      } finally {
+        releaseLock(lockFd);
+      }
     })().finally(() => { workerReady = undefined; });
   }
   return workerReady;

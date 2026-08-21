@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, mkdirSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -12,6 +12,14 @@ mkdirSync(targetDirectory, { recursive: true });
 mkdirSync(dataDirectory, { recursive: true });
 copyFileSync(source, target);
 chmodSync(target, 0o644);
+
+// 生成 opencode 全局插件 loader，re-export 到项目实际的 plugin 文件（路径随安装位置动态生成）
+const pluginSource = resolve(project, "plugin/opencode-memory.ts");
+const pluginLoaderDirectory = resolve(homedir(), ".config/opencode/plugins");
+const pluginLoader = resolve(pluginLoaderDirectory, "opencode-memory.ts");
+mkdirSync(pluginLoaderDirectory, { recursive: true });
+writeFileSync(pluginLoader, `export { OpencodeMemory } from ${JSON.stringify(pluginSource)};\n`);
+console.log(`plugin loader -> ${pluginLoader}`);
 
 const uid = process.getuid?.() ?? 501;
 const service = `gui/${uid}/io.opencode.memory`;

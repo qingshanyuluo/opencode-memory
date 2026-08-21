@@ -14,6 +14,32 @@ The repository currently contains the project foundation:
 
 The installed opencode plugin now queues idle sessions for asynchronous behavior extraction and durable knowledge organization. The hot path only injects a compact memory directory and serves the pull tool; it never runs an LLM.
 
+## Install
+
+Requirements: macOS + [Bun](https://bun.sh).
+
+```bash
+# 1. 安装依赖
+bun install
+
+# 2. 配置模型 provider
+#    默认用 deepseek/deepseek-v4-flash，需在 ~/.local/share/opencode/auth.json 里配好 deepseek key；
+#    换模型/端点：复制 .env.example 为 .env 并设置 OPENCODE_MEMORY_BEHAVIOR_MODEL 与对应 provider 的 key/baseURL。
+
+# 3. 编译初始语料（一次性读取本机 opencode.db，生成 L1a 索引）
+bun run bootstrap
+
+# 4. 安装 daemon（launchd，开机自启 + 崩溃自愈）+ 生成 opencode 全局插件 loader
+bun run daemon:install
+
+# 5. 重启 opencode 使插件生效
+```
+
+安装后 `daemon:install` 会自动把插件 loader 写到
+`~/.config/opencode/plugins/opencode-memory.ts`（路径按实际安装位置动态生成）。
+daemon 以 launchd 为主（`KeepAlive` 自愈），插件只做 health check 兜底并在多
+会话并发下拉起时用文件锁互斥，避免重复绑定端口。
+
 ## Development
 
 ```bash
