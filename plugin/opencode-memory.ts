@@ -103,6 +103,8 @@ ${lines.join("\n")}
 
 export const OpencodeMemory = (async ({ directory, client }) => {
   await ensureWorker();
+  // opencode 启动时触发一次层级化（daemon 端带 30 分钟节流，重复重启不会频繁重跑）
+  void dashboardFetch("/api/memory/refactor", { method: "POST" }).catch(() => {});
   const injectedSessions = new Set<string>();
 
   async function loadGlobalCatalog(): Promise<Parameters<typeof renderToolDescription>[0] | null> {

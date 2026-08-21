@@ -180,7 +180,15 @@ export function startDashboard(config: AppConfig, memoryDatabase: Database): Das
           return json(knowledge.graph(url.searchParams.get("inactive") !== "false"));
         }
         if (url.pathname === "/api/memory/refactor" && request.method === "POST") {
-          return hierarchy.run().then((result) => json(result));
+          const lastRun = memoryDatabase.query<{ completed_at: number | null }, []>(`
+            SELECT completed_at FROM hierarchy_runs WHERE status='completed' ORDER BY completed_at DESC LIMIT 1
+          `).get();
+          const now = Date.now();
+          if (lastRun?.completed_at && now - lastRun.completed_at < 30 * 60 * 1000) {
+            return json({ skipped: true, reason: "recently completed" });
+          }
+          return hierarchy.run().then((result) => json(result)).catch((error) =>
+            json({ error: error instanceof Error ? error.message : String(error) }, 409));
         }
         if (url.pathname === "/api/hierarchy") {
           const run = memoryDatabase.query<Record<string, unknown>, []>(`
