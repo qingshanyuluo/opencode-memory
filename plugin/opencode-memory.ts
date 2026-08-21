@@ -91,13 +91,43 @@ function renderToolDescription(catalog: {
   ].join("\n");
 }
 
-export const OpencodeMemory = (async () => {
+function renderInjectionText(relevant: Array<{ title: string; role: string; domain: string | null; status: string }>): string {
+  const lines = relevant.slice(0, 20).map((item) =>
+    `- [${item.domain ?? "未分类"}/${item.role}] ${item.title}`,
+  );
+  return `<memory-relevant>
+本机持久记忆库中与当前项目相关的对象（正文用 memory_pull 工具按需加载）：
+${lines.join("\n")}
+</memory-relevant>`;
+}
+
+export const OpencodeMemory = (async ({ directory, client }) => {
   await ensureWorker();
+  const injectedSessions = new Set<string>();
 
   async function loadGlobalCatalog(): Promise<Parameters<typeof renderToolDescription>[0] | null> {
     const response = await dashboardFetch("/api/memory/catalog");
     if (!response.ok) return null;
     return await response.json() as Parameters<typeof renderToolDescription>[0];
+  }
+
+  async function injectSessionContext(sessionID: string): Promise<void> {
+    if (injectedSessions.has(sessionID)) return;
+    injectedSessions.add(sessionID);
+    try {
+      const response = await dashboardFetch(`/api/memory/catalog?directory=${encodeURIComponent(directory)}`);
+      if (!response.ok) return;
+      const catalog = await response.json() as { relevant?: Array<{ title: string; role: string; domain: string | null; status: string }> };
+      const relevant = catalog.relevant ?? [];
+      if (relevant.length === 0) return;
+      const text = renderInjectionText(relevant);
+      await client.session.prompt({
+        path: { id: sessionID },
+        body: { noReply: true, parts: [{ type: "text", text }] },
+      });
+    } catch {
+      // 注入失败绝不影响会话
+    }
   }
 
   return {
@@ -123,6 +153,7 @@ export const OpencodeMemory = (async () => {
         body: JSON.stringify({ sessionId: input.sessionID }),
       }).catch(() => {});
       void output;
+      void injectSessionContext(input.sessionID);
     },
     "tool.definition": async (input, output) => {
       if (input.toolID !== "memory_pull") return;
