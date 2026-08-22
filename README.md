@@ -2,6 +2,20 @@
 
 Local-first memory worker for opencode. The project captures lossless session data first, then derives recomputable memory artifacts asynchronously.
 
+## 核心创新点
+
+1. **「能力 / 对象 / 形态」三维正交知识本体**：知识按三个正交维度组织——**能力**（agent 能做什么，如诊断、查询、配置、验证、部署）、**对象**（针对什么，如消息、数据、代码）、**形态**（什么类型，如排障规程、平台手册、工具坑、抽象原则）。三层都由 LLM 自动生成，不写死任何分类，既稳定（能力维度是有限正交的），又能随知识内容自然扩展。
+
+2. **「恢复成本」作为记忆价值的唯一判据**：不按「是否常用 / 是否重要」判断，而是按「如果忘掉这条，靠 `--help`、官方文档、一次搜索能否一步恢复」——恢复成本高的（踩坑归纳、项目特定锚点、被证伪的死路、抽象方法论）才值得记。这直接对齐「减少试错成本」这个核心 ROI，而不是「复现次数」这种表面指标。
+
+3. **写时判断 + 注入零 LLM**：判断「值不值得记」放在会话结束的写时（异步，不影响前台）；每轮注入热路径**零 LLM**——只注入紧凑索引，正文通过 `memory_pull` 工具按需加载。避免把 LLM 延迟乘进工具循环，也避免每轮变化注入破坏 prompt cache。
+
+4. **稳定 id + ON CONFLICT 的增量合并**：每条知识的 id 由 `namespace + role + kind + title` 哈希而来，同主题知识 id 相同，新会话提炼出的同类知识自动归并进旧条目（机器生成的覆盖更新、人工审核过的保留、置信度取 max），知识库不随会话增多而无限膨胀。
+
+5. **薄壳 plugin + 独立 daemon 的进程外架构**：opencode 侧只挂一个薄适配层（注入索引 + 暴露 `memory_pull` 工具 + 监听会话空闲），提取 / 整理 / 检索全在独立 daemon 进程里跑，二者通过 REST 通信。与 opencode 的耦合收敛到稳定 REST 面（不依赖 experimental API），macOS 用 launchd、Linux 用 systemd 自动自启动，崩溃自愈。
+
+6. **多级自适应层级**：从 implementation 自动抽象出 interface 层级（Map-Reduce），顶层是 AI 自动发现的能力域，数量随知识演化而动态变化，而非预设的固定分类。
+
 ## Status
 
 The repository currently contains the project foundation:
